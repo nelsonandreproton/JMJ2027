@@ -1,0 +1,13 @@
+services:
+  jmj2027:
+    build: .
+    container_name: jmj2027
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - TZ=Europe/Lisbon
+    volumes:
+      - jmj2027_data:/app/data
+
+volumes:
+  jmj2027_data:
