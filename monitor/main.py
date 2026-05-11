@@ -9,6 +9,14 @@ from .scraper import fetch_news
 from .state import State
 from .telegram import TelegramNotifier
 
+# Heartbeat integration — optional: silently skipped if module not available
+# (e.g. during local development without the HetznerCheck volume mounted).
+try:
+    from heartbeat import beat as _hb_beat  # mounted at /hetznercheck via PYTHONPATH
+    _HEARTBEAT_AVAILABLE = True
+except ImportError:
+    _HEARTBEAT_AVAILABLE = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -82,6 +90,13 @@ def run() -> None:
                 logger.info(f"Verificação concluída — {count} novas notícias enviadas.")
                 last_daily = today
                 state.set_last_daily(today)
+                if _HEARTBEAT_AVAILABLE:
+                    _hb_beat(
+                        "JMJ2027",
+                        status="ok",
+                        note=f"daily check: {count} new items",
+                        next_in_seconds=86400,
+                    )
 
             # Weekly summary on Sunday (weekday==6) at 12:00 Lisbon time
             if now.weekday() == 6 and now.hour >= 12 and last_weekly != today:
