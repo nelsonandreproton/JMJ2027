@@ -26,8 +26,8 @@ O bot guarda o estado em disco (`state.json`) para nunca duplicar notificações
 🔔 Nova notícia JMJ Seul 2027
 
 📂 Avisos
-📰 Resultados da primeira fase de avaliação do Hino Oficial
-📅 2026-02-14
+📰 Aviso #1317
+📅 08/10/2026
 ```
 
 **Resumo semanal:**
@@ -109,7 +109,7 @@ jmj2027/
 ├── .gitignore
 └── monitor/
     ├── main.py           ← loop principal e scheduler (10h diário, domingo 12h)
-    ├── scraper.py        ← scraping com requests + BeautifulSoup
+    ├── scraper.py        ← deteção de novos itens por sondagem de boardId
     ├── state.py          ← persistência de IDs vistos e notícias semanais
     ├── telegram.py       ← envio de mensagens via HTTP API
     └── config.py         ← carregamento de variáveis de ambiente
@@ -135,9 +135,19 @@ O ficheiro `state.json` (no volume Docker `jmj2027_data`) guarda:
 - **`weekly_news`** — notícias acumuladas desde o último resumo de domingo
 - **`last_daily`** / **`last_weekly`** — datas da última execução de cada agendamento
 
-## Nota sobre JavaScript rendering
+## Como deteta notícias novas
 
-O site wydseoul.org é servidor-renderizado (SSR). Se nos logs aparecer o aviso _"0 itens encontrados — o site pode requerer JavaScript"_, é sinal de que o site mudou para renderização client-side e será necessário migrar o scraper para [Playwright](https://playwright.dev/).
+Desde outubro de 2026 o wydseoul.org serve as páginas de listagem e de detalhe cifradas com **pnp4web**, uma proteção anti-scraping em que o HTML só é decifrado no browser por JavaScript ofuscado. Já não é possível ler a lista nem os títulos.
+
+Em vez disso, o bot verifica os URLs de detalhe dos `boardId` seguintes ao último já visto:
+
+```
+https://wydseoul.org/pt/news/{notice|pressrelease}/detail?boardId=N
+```
+
+O servidor responde **200** se o item existe e **404** caso contrário. Os `boardId` são partilhados por todos os quadros do site, por isso o bot sonda uma janela de 200 IDs (`PROBE_WINDOW` em `main.py`) nas duas categorias, uma vez por dia (~400 pedidos com 0,3 s de intervalo).
+
+**Limitação:** as mensagens mostram `Aviso #N` / `Notícia #N` com link, sem título. A proteção pnp4web não é contornada.
 
 ## Segurança
 

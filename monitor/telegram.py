@@ -10,6 +10,16 @@ CATEGORY_LABEL = {
     "pressrelease": "Notícias da JMJ",
 }
 
+# Titles are unavailable (pages are pnp4web-encrypted), so link text is "<item> #<id>".
+ITEM_LABEL = {
+    "notice": "Aviso",
+    "pressrelease": "Notícia",
+}
+
+
+def _link_text(item: dict) -> str:
+    return f"{ITEM_LABEL.get(item['category'], item['category'])} #{item['board_id']}"
+
 
 class TelegramNotifier:
     def __init__(self, bot_token: str, chat_id: str):
@@ -44,7 +54,7 @@ class TelegramNotifier:
         text = (
             f"🔔 <b>Nova notícia JMJ Seul 2027</b>\n\n"
             f"📂 {label}\n"
-            f"📰 <a href=\"{item['url']}\">{item['title']}</a>\n"
+            f"📰 <a href=\"{item['url']}\">{_link_text(item)}</a>\n"
             f"📅 {item['date']}"
         )
         return self.send(text)
@@ -71,7 +81,7 @@ class TelegramNotifier:
             lines.append(f"\n📂 <b>{label}</b>")
             for item in cat_items:
                 lines.append(
-                    f"• <a href=\"{item['url']}\">{item['title']}</a> — {item['date']}"
+                    f"• <a href=\"{item['url']}\">{_link_text(item)}</a> — {item['date']}"
                 )
 
         return self.send("\n".join(lines))

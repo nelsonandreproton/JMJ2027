@@ -1,74 +1,64 @@
+"""Detect new wydseoul.org news by probing detail-page boardIds.
+
+Since Oct 2026 the site serves list and detail pages encrypted by pnp4web
+(decrypted client-side by obfuscated JS), so list pages can no longer be
+parsed. Detail URLs still answer 200 when an item exists and 404 otherwise,
+which is enough to detect new items — but not their titles.
+"""
+
 import logging
-import re
-from urllib.parse import urljoin
+import time
 
 import requests
-from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://wydseoul.org"
-
-URLS = {
-    "notice": f"{BASE_URL}/pt/news/notice",
-    "pressrelease": f"{BASE_URL}/pt/news/pressrelease",
-}
+CATEGORIES = ("notice", "pressrelease")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; JMJ2027Bot/1.0)",
     "Accept-Language": "pt-PT,pt;q=0.9",
 }
 
-
-def _extract_board_id(href: str) -> str | None:
-    m = re.search(r"boardId=(\d+)", href)
-    return m.group(1) if m else None
+# Delay between requests — keeps the daily probe polite.
+REQUEST_DELAY_SECONDS = 0.3
 
 
-def fetch_news(category: str) -> list[dict]:
-    """Fetch news items for the given category.
+def detail_url(category: str, board_id: int | str) -> str:
+    return f"{BASE_URL}/pt/news/{category}/detail?boardId={board_id}"
 
-    Returns a list of dicts with keys: board_id, title, date, url, category.
-    Returns an empty list on error.
-    """
-    url = URLS[category]
+
+def _exists(category: str, board_id: int) -> bool:
+    """True if the detail page exists (HTTP 200). Network errors count as not found."""
+    url = detail_url(category, board_id)
     try:
         resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-    except Exception as e:
+    except requests.RequestException as e:
         logger.error(f"Erro ao obter {url}: {e}")
-        return []
+        return False
+    if resp.status_code not in (200, 404):
+        logger.warning(f"[{category}] #{board_id}: HTTP {resp.status_code} inesperado")
+    return resp.status_code == 200
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+
+def find_new_items(last_id: int, window: int) -> list[dict]:
+    """Probe boardIds last_id+1 .. last_id+window in every category.
+
+    boardIds are shared across the site's boards, so new items in these two
+    categories can appear anywhere after the last seen id.
+    Returns items (board_id, category, url) sorted by board_id.
+    """
     items = []
+    for board_id in range(last_id + 1, last_id + window + 1):
+        for category in CATEGORIES:
+            if _exists(category, board_id):
+                items.append({
+                    "board_id": str(board_id),
+                    "category": category,
+                    "url": detail_url(category, board_id),
+                })
+            time.sleep(REQUEST_DELAY_SECONDS)
 
-    for li in soup.select(".board-item"):
-        a = li.select_one("a.board-item__link")
-        title_el = li.select_one(".board-item__title-text")
-        date_el = li.select_one(".board-item__date")
-
-        if not a or not title_el or not date_el:
-            continue
-
-        href = a.get("href", "")
-        board_id = _extract_board_id(href)
-        if not board_id:
-            continue
-
-        items.append({
-            "board_id": board_id,
-            "title": title_el.get_text(strip=True),
-            "date": date_el.get_text(strip=True),
-            "url": urljoin(BASE_URL, href),
-            "category": category,
-        })
-
-    if not items:
-        logger.warning(
-            f"[{category}] 0 itens encontrados — o site pode requerer JavaScript. "
-            f"Verificar manualmente: {url}"
-        )
-    else:
-        logger.info(f"[{category}] {len(items)} itens encontrados")
-
+    logger.info(f"Sondagem #{last_id + 1}–#{last_id + window}: {len(items)} novos itens")
     return items

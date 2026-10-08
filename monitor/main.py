@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .config import load_config
-from .scraper import fetch_news
+from .scraper import find_new_items
 from .state import State
 from .telegram import TelegramNotifier
 
@@ -26,7 +26,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TZ = ZoneInfo("Europe/Lisbon")
-CATEGORIES = ["notice", "pressrelease"]
+# boardIds are shared by all site boards; observed gaps between our items reach ~120.
+PROBE_WINDOW = 200
+# Fallback when state has no seen ids (fresh volume): last notice notified before the
+# site switched to pnp4web encryption (Oct 2026).
+BASELINE_BOARD_ID = 1316
 
 # Check every 60s — lightweight, just datetime comparisons until trigger time
 SLEEP_SECONDS = 60
@@ -37,18 +41,17 @@ def now_local() -> datetime:
 
 
 def check_new_news(state: State, notifier: TelegramNotifier) -> int:
-    """Scrape both URLs and notify for each new item. Returns count sent."""
+    """Probe for new boardIds and notify for each new item. Returns count sent."""
     sent = 0
-    for category in CATEGORIES:
-        items = fetch_news(category)
-        for item in items:
-            if not state.is_seen(category, item["board_id"]):
-                logger.info(
-                    f"Nova notícia [{category}] #{item['board_id']}: {item['title']}"
-                )
-                notifier.send_new_item(item)
-                state.mark_seen(category, item["board_id"], item)
-                sent += 1
+    detected_on = now_local().strftime("%d/%m/%Y")
+    for item in find_new_items(state.get_last_id(BASELINE_BOARD_ID), PROBE_WINDOW):
+        if state.is_seen(item["category"], item["board_id"]):
+            continue
+        item = {**item, "date": detected_on}
+        logger.info(f"Nova notícia [{item['category']}] #{item['board_id']}")
+        notifier.send_new_item(item)
+        state.mark_seen(item["category"], item["board_id"], item)
+        sent += 1
     return sent
 
 

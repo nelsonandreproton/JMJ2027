@@ -45,6 +45,11 @@ class State:
         self._data["weekly_news"].append(item)
         _save(self._path, self._data)
 
+    def get_last_id(self, default: int) -> int:
+        """Highest boardId seen in any category, or default if none."""
+        ids = [int(i) for ids in self._data["seen_ids"].values() for i in ids]
+        return max(ids, default=default)
+
     def get_weekly_news(self) -> list:
         return list(self._data["weekly_news"])
 
