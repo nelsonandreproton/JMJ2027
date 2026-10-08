@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .config import load_config
-from .scraper import find_new_items
+from .scraper import SourceUnreachable, find_new_items
 from .state import State
 from .telegram import TelegramNotifier
 
@@ -44,7 +44,15 @@ def check_new_news(state: State, notifier: TelegramNotifier) -> int:
     """Probe for new boardIds and notify for each new item. Returns count sent."""
     sent = 0
     detected_on = now_local().strftime("%d/%m/%Y")
-    for item in find_new_items(state.get_last_id(BASELINE_BOARD_ID), PROBE_WINDOW):
+    try:
+        items = find_new_items(state.get_last_id(BASELINE_BOARD_ID), PROBE_WINDOW)
+    except SourceUnreachable as e:
+        logger.error(f"wydseoul.org inacessível: {e}")
+        notifier.send(
+            f"⚠️ <b>JMJ2027 Bot</b>\nNão foi possível contactar wydseoul.org ({e}). Verificar logs."
+        )
+        return 0
+    for item in items:
         if state.is_seen(item["category"], item["board_id"]):
             continue
         item = {**item, "date": detected_on}
